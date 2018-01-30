@@ -16,11 +16,25 @@ See also:
 - many chacha20 links at
   http://ianix.com/pub/chacha-deployment.html
 
+Note: modified to run on Lua < 5.3, added trotl,rotl32 function
+
 ]]
 
+local BinDecHex = require 'BinDecHex'
+local ifloor = math.ifloor or math.floor
 local app, concat = table.insert, table.concat
 
 ------------------------------------------------------------
+
+local function trotl(a,b,n)
+	x = 32 - n
+	t = BinDecHex.BMNot(a,b)
+	da = BinDecHex.BMShLeft(t,n)
+	db = BinDecHex.BMShRight(t,x)
+	dc = BinDecHex.BMOr(da,db)
+	d = BinDecHex.BMAnd(dc,0xffffffff)
+	return d
+end
 
 -- chacha quarter round (rotl inlined)
 local function qround(st,x,y,z,w)
@@ -28,18 +42,31 @@ local function qround(st,x,y,z,w)
 	-- x,y,z,w are indices in st
 	local a, b, c, d = st[x], st[y], st[z], st[w]
 	local t
-	a = (a + b) & 0xffffffff
+	--a = (a + b) & 0xffffffff
+	a = BinDecHex.BMAnd((a + b),0xffffffff)
+
 	--d = rotl32(d ~ a, 16)
-	t = d ~ a ; d = ((t << 16) | (t >> (16))) & 0xffffffff
-	c = (c + d) & 0xffffffff
+	--t = d ~ a ; d = ((t << 16) | (t >> (16))) & 0xffffffff
+
+	d = trotl(d,a,16)
+	c = BinDecHex.BMAnd((c + d),0xffffffff)
+
 	--b = rotl32(b ~ c, 12)
-	t = b ~ c ; b = ((t << 12) | (t >> (20))) & 0xffffffff
-	a = (a + b) & 0xffffffff
+	--t = b ~ c ; b = ((t << 12) | (t >> (20))) & 0xffffffff
+
+	b = trotl(b,c,12)
+	a = BinDecHex.BMAnd((a+b),0xffffffff)
+
 	--d = rotl32(d ~ a, 8)
-	t = d ~ a ; d = ((t << 8) | (t >> (24))) & 0xffffffff
-	c = (c + d) & 0xffffffff
+	--t = d ~ a ; d = ((t << 8) | (t >> (24))) & 0xffffffff
+
+	d = trotl(d,a,8)
+	c = BinDecHex.BMAnd((c + d),0xffffffff)
+
 	--b = rotl32(b ~ c, 7)
-	t = b ~ c ; b = ((t << 7) | (t >> (25))) & 0xffffffff
+	--t = b ~ c ; b = ((t << 7) | (t >> (25))) & 0xffffffff
+
+	b = trotl(b,c,7)
 	st[x], st[y], st[z], st[w] = a, b, c, d
 	return st
 end
@@ -75,7 +102,7 @@ local chacha20_block = function(key, counter, nonce)
 		qround(wst, 4,5,10,15) --8.  QUARTERROUND ( 3, 4, 9,14)
 	end
 	-- add working_state to state
-	for i = 1, 16 do st[i] = (st[i] + wst[i]) & 0xffffffff end
+	for i = 1, 16 do st[i] = BinDecHex.BMAnd((st[i] + wst[i]),0xffffffff) end
 	-- return st, an array of 16 u32 words used as a keystream
 	return st
 end --chacha20_block()
@@ -104,7 +131,7 @@ local function chacha20_encrypt_block(key, counter, nonce, pt, ptidx)
 	local ba = table.pack(string.unpack(pat16, pt, ptidx))
 	local keystream = chacha20_block(key, counter, nonce)
 	for i = 1, 16 do
-		ba[i] = ba[i] ~ keystream[i]
+		ba[i] = BinDecHex.BMNot(ba[i],keystream[i])
 	end
 	local es = string.pack(pat16, table.unpack(ba))
 	if rbn < 64 then
@@ -122,7 +149,7 @@ local chacha20_encrypt = function(key, counter, nonce, pt)
 
 	-- ensure counter can fit an uint32 --although it's unlikely
 	-- that we hit this wall with pure Lua encryption :-)
-	assert((counter + #pt // 64 + 1) < 0xffffffff,
+	assert((counter + ifloor(#pt,64) + 1) < 0xffffffff,
 		"block counter must fit an uint32")
 	assert(#key == 32, "#key must be 32")
 	assert(#nonce == 12, "#nonce must be 12")

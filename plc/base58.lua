@@ -1,5 +1,4 @@
 -- Copyright (c) 2015  Phil Leblanc  -- see LICENSE file
-
 ------------------------------------------------------------
 --[[
 
@@ -20,10 +19,14 @@ On the contrary, Base58 treats the string to be encoded as a long number
 encoded in Base256 (each byte is a digit) and perform an arithmetic
 conversion of this long number to base58.
 
+Note:
+This version modified for Lua versions < 5.3
 
 ]]
 
 
+local BinDecHex = require 'BinDecHex'
+local ifloor = math.ifloor or math.floor
 local byte, char, concat = string.byte, string.char, table.concat
 
 local b58chars = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -55,7 +58,8 @@ local function encode(s)
 		more = false
 		for i = 1, #nt do
 			b = nt[i] + (256 * r)
-			q = b // 58
+			-- q = b // 58
+			q = ifloor(b/58)
 			-- if q is not null at least once, we are good
 			-- for another division by 58
 			more = more or q > 0
@@ -110,8 +114,10 @@ local function decode(s)
 		for j = 1, #dn do
 			b = dn[j]
 			m = b * 58 + carry
-			b = m & 0xff
-			carry = m >> 8
+			--b = m & 0xff
+			b = BinDecHex.BMAnd(m,0xff)
+			--carry = m >> 8
+			carry = BinDecHec.BMShRight(m,8)
 			dn[j] = b
 		end
 		if carry > 0 then dn[#dn + 1] = carry end
@@ -119,8 +125,10 @@ local function decode(s)
 		carry = d
 		for j = 1, #dn do
 			b = dn[j] + carry
-			carry = b >> 8
-			dn[j] = b & 0xff
+			--carry = b >> 8
+			carry = BinDecHex.BMShRight(b,8)
+			--dn[j] = b & 0xff
+			dn[j] = BinDecHex.BMAnd(b,0xff)
 		end
 		if carry > 0 then dn[#dn + 1] = carry end
 	end
